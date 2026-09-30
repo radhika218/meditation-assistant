@@ -1,0 +1,16 @@
+const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const ctx={Intl,Date,Set};vm.createContext(ctx);vm.runInContext(fs.readFileSync(__dirname+'/../src/Rules.gs','utf8'),ctx);const R=ctx.Rules;
+const zone='America/Los_Angeles', now=Date.parse('2026-09-28T12:00:00-07:00');
+const slot={id:'s1',start:Date.parse('2026-09-28T16:00:00-07:00'),end:Date.parse('2026-09-28T16:30:00-07:00'),capacity:4,valid:true,open:true};
+const booking=(x={})=>Object.assign({id:'b1',slotId:'s1',user:'u1',names:['Anita'],state:'confirmed',start:slot.start,end:slot.end},x);
+test('week rolls at Pacific Monday midnight, not UTC midnight',()=>{assert.equal(R.week(Date.parse('2026-09-28T06:59:59Z'),zone).start,'2026-09-21');assert.equal(R.week(Date.parse('2026-09-28T07:00:00Z'),zone).start,'2026-09-28');});
+test('winter rollover uses PST and handles DST weekend',()=>{assert.equal(R.week(Date.parse('2026-11-02T07:59:59Z'),zone).start,'2026-10-26');assert.equal(R.week(Date.parse('2026-11-02T08:00:00Z'),zone).start,'2026-11-02');});
+test('four-hour boundary inclusive, one millisecond late rejected',()=>{assert.equal(R.validate(slot,[],'u',['Mina'],now,zone).length,1);assert.throws(()=>R.validate(slot,[],'u',['Mina'],now+1,zone),/four hours/);});
+test('capacity group / parties / last seat',()=>{const bs=[booking({names:['Asha','Mina','Hari']})];assert.equal(R.validate(slot,bs,'u2',['Zoya'],now,zone).length,1);assert.throws(()=>R.validate(slot,bs,'u2',['Zoya','Ravi'],now,zone),/enough spaces/);});
+test('individual slot and pending reservations occupy seats',()=>{assert.throws(()=>R.validate({...slot,capacity:1},[booking({state:'pending'})],'u2',['Zoya'],now,zone),/enough spaces/);});
+test('duplicate and overlapping participants blocked',()=>{assert.throws(()=>R.validate(slot,[booking()],'u1',['Other'],now,zone),/already/);assert.throws(()=>R.validate(slot,[booking({slotId:'s2'})],'u2',['anita'],now,zone),/participant/i);});
+test('cancelled booking frees capacity',()=>{assert.equal(R.used([booking({state:'cancelled'})],'s1'),0);});
+test('closed / conflicting / next week slots rejected',()=>{for(const extra of [{open:false},{conflict:true},{valid:false}])assert.throws(()=>R.validate({...slot,...extra},[],'u',['Anita'],now,zone),/not available/);assert.throws(()=>R.validate({...slot,start:slot.start+7*86400000,end:slot.end+7*86400000},[],'u',['Anita'],now,zone),/this week/);});
+test('calendar fields required and unique',()=>{assert.equal(R.config('Capacity: 4\nBooking: open').valid,true);assert.equal(R.config('Capacity: 0\nBooking: open').valid,false);assert.equal(R.config('Capacity: 1\nCapacity: 4\nBooking: open').valid,false);assert.equal(R.config('Capacity: 4').valid,false);});
+test('managed section does not alter leader config',()=>{assert.equal(R.config('Capacity: 4\nBooking: open\n--- Assistant attendance ---\nBooked: 2').capacity,4);});
+test('names validated, duplicate normalized names rejected',()=>{assert.throws(()=>R.names(['Anita',' ANITA ']),/different/);assert.throws(()=>R.names([]),/each participant/);});
