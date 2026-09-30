@@ -1,0 +1,12 @@
+dist/
+preview/
+.env
+.env.*
+.clasp.json
+.clasprc.json
+*.key
+*.pem
+.DS_Store
+private/
+*.csv
+*.xlsx

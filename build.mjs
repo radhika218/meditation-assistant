@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const root=path.dirname(new URL(import.meta.url).pathname);
+const read=f=>fs.readFileSync(path.join(root,'src',f),'utf8');
+fs.mkdirSync(path.join(root,'dist'),{recursive:true});
+fs.mkdirSync(path.join(root,'preview'),{recursive:true});
+const html=read('Index.html');
+const code=read('Code.gs').replace("HtmlService.createHtmlOutputFromFile('Index')","HtmlService.createHtmlOutput(APP_HTML)");
+fs.writeFileSync(path.join(root,'dist','MeditationAssistant.gs'),read('Rules.gs')+'\n'+code+'\nconst APP_HTML = '+JSON.stringify(html)+';\n');
+fs.copyFileSync(path.join(root,'src','appsscript.json'),path.join(root,'dist','appsscript.json'));
+fs.writeFileSync(path.join(root,'preview','index.html'),html);
+console.log('Built single-file Apps Script and local preview.');
